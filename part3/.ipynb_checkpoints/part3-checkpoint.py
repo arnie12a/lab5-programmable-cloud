@@ -9,7 +9,7 @@ VM2_NAME = "part3-vm2"
 MACHINE_TYPE = "e2-medium"
 SERVICE_ACCOUNT_FILE = "service-credentials.json"
 
-# This script runs on VM-2 and starts Flask.
+# Startup script that will run on VM-2.
 VM2_STARTUP = """#!/bin/bash
 set -e
 
@@ -31,8 +31,8 @@ flask init-db
 nohup flask run -h 0.0.0.0 > /var/log/flask.log 2>&1 &
 """
 
-# This Python program runs INSIDE VM-1.
-# It uses the service account to create VM-2.
+# Python program that will run INSIDE VM-1.
+# It uses the service-account credentials to create VM-2.
 VM2_CODE = """#!/usr/bin/env python3
 
 from google.oauth2 import service_account
@@ -78,7 +78,7 @@ network = compute_v1.NetworkInterface(
 
 vm = compute_v1.Instance(
     name=NAME,
-    machine_type=f"zones/{ZONE}/machineTypes=e2-medium",
+    machine_type=f"zones/{ZONE}/machineTypes/e2-medium",
     disks=[disk],
     network_interfaces=[network],
     tags=compute_v1.Tags(items=["allow-5000"]),
@@ -103,14 +103,9 @@ instances.insert(
 print("VM-2 created.")
 """
 
-credentials, PROJECT = google.auth.default()
-
-instances = compute_v1.InstancesClient(
-    credentials=credentials
-)
-
-# VM-1 startup script.
-# This runs inside VM-1.
+# Startup script for VM-1.
+# This downloads the information passed through VM-1 metadata
+# and then runs the VM-2 creation program.
 VM1_STARTUP = """#!/bin/bash
 set -e
 
@@ -120,32 +115,42 @@ apt-get install -y python3 python3-pip curl
 mkdir -p /srv
 cd /srv
 
-curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/service-credentials" \
-    -H "Metadata-Flavor: Google" \
-    > service-credentials.json
+curl -s \
+"http://metadata.google.internal/computeMetadata/v1/instance/attributes/service-credentials" \
+-H "Metadata-Flavor: Google" \
+> service-credentials.json
 
-curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/vm2-startup-script" \
-    -H "Metadata-Flavor: Google" \
-    > vm2-startup-script.sh
+curl -s \
+"http://metadata.google.internal/computeMetadata/v1/instance/attributes/vm2-startup-script" \
+-H "Metadata-Flavor: Google" \
+> vm2-startup-script.sh
 
-curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/vm1-launch-vm2-code" \
-    -H "Metadata-Flavor: Google" \
-    > vm1-launch-vm2-code.py
+curl -s \
+"http://metadata.google.internal/computeMetadata/v1/instance/attributes/vm1-launch-vm2-code" \
+-H "Metadata-Flavor: Google" \
+> vm1-launch-vm2-code.py
 
-curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/project" \
-    -H "Metadata-Flavor: Google" \
-    > project
+curl -s \
+"http://metadata.google.internal/computeMetadata/v1/instance/attributes/project" \
+-H "Metadata-Flavor: Google" \
+> project
 
 python3 -m pip install --upgrade google-cloud-compute google-auth
 
 python3 /srv/vm1-launch-vm2-code.py
 """
 
-# Read the service account key.
+credentials, PROJECT = google.auth.default()
+
+instances = compute_v1.InstancesClient(
+    credentials=credentials
+)
+
+# Read the service-account credentials from the local file.
 with open(SERVICE_ACCOUNT_FILE) as file:
     service_credentials = file.read()
 
-# Create VM-1.
+# Create VM-1's boot disk.
 disk = compute_v1.AttachedDisk(
     boot=True,
     auto_delete=True,
@@ -158,6 +163,7 @@ disk = compute_v1.AttachedDisk(
     )
 )
 
+# Create VM-1's network interface.
 network = compute_v1.NetworkInterface(
     network="global/networks/default",
     access_configs=[
@@ -168,9 +174,10 @@ network = compute_v1.NetworkInterface(
     ]
 )
 
+# Create VM-1.
 vm1 = compute_v1.Instance(
     name=VM1_NAME,
-    machine_type=f"zones/{ZONE}/machineTypes={MACHINE_TYPE}",
+    machine_type=f"zones/{ZONE}/machineTypes/{MACHINE_TYPE}",
     disks=[disk],
     network_interfaces=[network],
     metadata=compute_v1.Metadata(
