@@ -4,6 +4,8 @@ import google.auth
 from google.api_core.exceptions import NotFound
 from google.cloud import compute_v1
 
+
+# Configuration for VM, image, and firewall
 ZONE = "us-west1-a"
 NAME = "flask-vm"
 IMAGE_PROJECT = "ubuntu-os-cloud"
@@ -11,6 +13,8 @@ IMAGE_FAMILY = "ubuntu-2204-lts"
 FIREWALL = "allow-5000"
 TAG = "allow-5000"
 
+
+# Startup script installs and runs the Flask application when the VM starts
 startup = """#!/bin/bash
 set -e
 apt-get update
@@ -26,12 +30,15 @@ flask init-db
 nohup flask run -h 0.0.0.0 > /var/log/flask.log 2>&1 &
 """
 
+
+# Authenticate and create Google Cloud API clients
 credentials, PROJECT = google.auth.default()
 firewalls = compute_v1.FirewallsClient(credentials=credentials)
 instances = compute_v1.InstancesClient(credentials=credentials)
 images = compute_v1.ImagesClient(credentials=credentials)
 
-# Check/create firewall rule
+
+# Check for firewall rule and create it if it does not exist
 try:
     firewalls.get(project=PROJECT, firewall=FIREWALL)
     print(f"Firewall rule {FIREWALL} already exists.")
@@ -55,7 +62,8 @@ except NotFound:
         firewall_resource=rule
     ).result()
 
-# Check/create VM
+
+# Check for VM and create it if it does not exist
 try:
     instance = instances.get(
         project=PROJECT,
@@ -66,11 +74,13 @@ try:
 except NotFound:
     print(f"Creating the {NAME} instance in {ZONE}...")
 
+    # Get the Ubuntu image for the VM
     image = images.get_from_family(
         project=IMAGE_PROJECT,
         family=IMAGE_FAMILY
     )
 
+    # Configure the VM boot disk
     disk = compute_v1.AttachedDisk(
         boot=True,
         auto_delete=True,
@@ -81,6 +91,7 @@ except NotFound:
         )
     )
 
+    # Configure the VM network and external IP
     network = compute_v1.NetworkInterface(
         network="global/networks/default",
         access_configs=[
@@ -92,6 +103,7 @@ except NotFound:
         ]
     )
 
+    # Configure the VM with the disk, network, and startup script
     instance = compute_v1.Instance(
         name=NAME,
         machine_type=f"zones/{ZONE}/machineTypes/e2-medium",
@@ -107,6 +119,7 @@ except NotFound:
         )
     )
 
+    # Create the VM
     instances.insert(
         project=PROJECT,
         zone=ZONE,
@@ -119,7 +132,8 @@ except NotFound:
         instance=NAME
     )
 
-# Add network tag only if it is missing
+
+# Add the firewall network tag to the VM if it is missing
 current_tags = instance.tags.items or []
 
 if TAG not in current_tags:
@@ -138,7 +152,8 @@ if TAG not in current_tags:
 else:
     print(f"Network tag {TAG} already exists.")
 
-# Get external IP
+
+# Get the VM's external IP and display the Flask application URL
 instance = instances.get(
     project=PROJECT,
     zone=ZONE,

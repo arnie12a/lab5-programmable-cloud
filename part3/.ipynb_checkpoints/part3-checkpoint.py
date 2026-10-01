@@ -3,13 +3,16 @@
 import google.auth
 from google.cloud import compute_v1
 
+
+# Configuration for the two VMs and machine type
 ZONE = "us-west1-a"
 VM1_NAME = "part3-vm1"
 VM2_NAME = "part3-vm2"
 MACHINE_TYPE = "e2-medium"
 SERVICE_ACCOUNT_FILE = "service-credentials.json"
 
-# Startup script that will run on VM-2.
+
+# Startup script that will run on VM-2
 VM2_STARTUP = """#!/bin/bash
 set -e
 
@@ -31,8 +34,8 @@ flask init-db
 nohup flask run -h 0.0.0.0 > /var/log/flask.log 2>&1 &
 """
 
-# Python program that will run INSIDE VM-1.
-# It uses the service-account credentials to create VM-2.
+
+# Python program that runs inside VM-1 and creates VM-2
 VM2_CODE = """#!/usr/bin/env python3
 
 from google.oauth2 import service_account
@@ -103,8 +106,9 @@ instances.insert(
 print("VM-2 created.")
 """
 
+
 # Startup script for VM-1.
-# This downloads the information passed through VM-1 metadata
+# It downloads the files passed through VM-1 metadata
 # and then runs the VM-2 creation program.
 VM1_STARTUP = """#!/bin/bash
 set -e
@@ -140,17 +144,21 @@ python3 -m pip install --upgrade google-cloud-compute google-auth
 python3 /srv/vm1-launch-vm2-code.py
 """
 
+
+# Authenticate and create the Compute Engine API client
 credentials, PROJECT = google.auth.default()
 
 instances = compute_v1.InstancesClient(
     credentials=credentials
 )
 
-# Read the service-account credentials from the local file.
+
+# Read the service-account credentials used by VM-1 to create VM-2
 with open(SERVICE_ACCOUNT_FILE) as file:
     service_credentials = file.read()
 
-# Create VM-1's boot disk.
+
+# Configure VM-1's boot disk
 disk = compute_v1.AttachedDisk(
     boot=True,
     auto_delete=True,
@@ -163,7 +171,8 @@ disk = compute_v1.AttachedDisk(
     )
 )
 
-# Create VM-1's network interface.
+
+# Configure VM-1's network and external IP
 network = compute_v1.NetworkInterface(
     network="global/networks/default",
     access_configs=[
@@ -174,7 +183,8 @@ network = compute_v1.NetworkInterface(
     ]
 )
 
-# Create VM-1.
+
+# Create VM-1 and pass it the credentials and code needed to create VM-2
 vm1 = compute_v1.Instance(
     name=VM1_NAME,
     machine_type=f"zones/{ZONE}/machineTypes/{MACHINE_TYPE}",
@@ -206,6 +216,8 @@ vm1 = compute_v1.Instance(
     )
 )
 
+
+# Create VM-1
 print(f"Creating {VM1_NAME}...")
 
 instances.insert(

@@ -6,6 +6,8 @@ import google.auth
 from google.api_core.exceptions import NotFound
 from google.cloud import compute_v1
 
+
+# Configuration for the original VM, snapshot, cloned VMs, and machine type
 ZONE = "us-west1-a"
 INSTANCE = "flask-vm"
 SNAPSHOT = f"base-snapshot-{INSTANCE}"
@@ -13,7 +15,8 @@ CLONES = ["flask-vm-1", "flask-vm-2", "flask-vm-3"]
 MACHINE_TYPE = "e2-medium"
 TAG = "allow-5000"
 
-# Start Flask when each cloned VM boots.
+
+# Startup script used by each cloned VM to start the Flask application
 STARTUP = """#!/bin/bash
 set -e
 cd /opt/app/flask-tutorial
@@ -22,23 +25,28 @@ flask init-db
 nohup flask run -h 0.0.0.0 > /var/log/flask.log 2>&1 &
 """
 
+
+# Authenticate and create Compute Engine API clients
 credentials, PROJECT = google.auth.default()
 
 instances = compute_v1.InstancesClient(credentials=credentials)
 disks = compute_v1.DisksClient(credentials=credentials)
 snapshots = compute_v1.SnapshotsClient(credentials=credentials)
 
-# Find the original VM.
+
+# Find the original VM
 instance = instances.get(
     project=PROJECT,
     zone=ZONE,
     instance=INSTANCE
 )
 
-# Find its boot disk.
+
+# Find the boot disk attached to the original VM
 disk_name = instance.disks[0].source.split("/")[-1]
 
-# Delete the old snapshot if it exists.
+
+# Delete the old snapshot if it already exists
 try:
     snapshots.get(
         project=PROJECT,
@@ -57,7 +65,8 @@ try:
 except NotFound:
     print(f"Snapshot {SNAPSHOT} does not exist.")
 
-# Create a fresh snapshot from the original VM's boot disk.
+
+# Create a fresh snapshot from the original VM's boot disk
 print(f"Creating snapshot {SNAPSHOT}...")
 
 disk = disks.get(
@@ -78,7 +87,8 @@ snapshots.insert(
 
 print(f"Snapshot {SNAPSHOT} created.")
 
-# Delete old cloned VMs so that every run creates three fresh VMs.
+
+# Delete any existing cloned VMs so each run creates fresh copies
 for name in CLONES:
     try:
         instances.get(
@@ -100,7 +110,8 @@ for name in CLONES:
     except NotFound:
         pass
 
-# Create three VMs from the snapshot and measure creation time.
+
+# Create three VMs from the snapshot and measure how long each takes
 timings = []
 
 for name in CLONES:
@@ -145,6 +156,7 @@ for name in CLONES:
 
     print(f"Creating {name}...")
 
+    # Measure the time required to create each cloned VM
     start = time.time()
 
     instances.insert(
@@ -158,7 +170,8 @@ for name in CLONES:
 
     print(f"{name} created in {elapsed:.2f} seconds.")
 
-# Write the measured times to TIMING.md.
+
+# Save the measured VM creation times to TIMING.md
 with open("TIMING.md", "w") as file:
     file.write("# VM Clone Timing\n\n")
 
