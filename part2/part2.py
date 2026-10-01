@@ -13,30 +13,35 @@ CLONES = ["flask-vm-1", "flask-vm-2", "flask-vm-3"]
 MACHINE_TYPE = "e2-medium"
 TAG = "allow-5000"
 
+# Start Flask on each cloned VM.
+STARTUP = """#!/bin/bash
+cd /opt/app/flask-tutorial
+export FLASK_APP=flaskr
+nohup flask run -h 0.0.0.0 > /var/log/flask.log 2>&1 &
+"""
+
 credentials, PROJECT = google.auth.default()
 
 instances = compute_v1.InstancesClient(credentials=credentials)
 disks = compute_v1.DisksClient(credentials=credentials)
 snapshots = compute_v1.SnapshotsClient(credentials=credentials)
 
-# Find original VM
+# Find the original VM and its boot disk.
 instance = instances.get(
     project=PROJECT,
     zone=ZONE,
     instance=INSTANCE
 )
 
-# Find boot disk
 disk_name = instance.disks[0].source.split("/")[-1]
 
-# Create snapshot if it does not already exist
+# Create the snapshot if it does not already exist.
 try:
     snapshots.get(
         project=PROJECT,
         snapshot=SNAPSHOT
     )
     print(f"Snapshot {SNAPSHOT} already exists.")
-
 except NotFound:
     print(f"Creating snapshot {SNAPSHOT}...")
 
@@ -58,11 +63,10 @@ except NotFound:
 
     print(f"Snapshot {SNAPSHOT} created.")
 
-# Create three VMs from snapshot
+# Create three VMs from the snapshot.
 timings = []
 
 for name in CLONES:
-
     try:
         instances.get(
             project=PROJECT,
@@ -71,7 +75,6 @@ for name in CLONES:
         )
         print(f"Instance {name} already exists.")
         continue
-
     except NotFound:
         pass
 
@@ -102,11 +105,19 @@ for name in CLONES:
         name=name,
         machine_type=f"zones/{ZONE}/machineTypes/{MACHINE_TYPE}",
         disks=[disk],
-        network_interfaces=[network]
+        network_interfaces=[network],
+        tags=compute_v1.Tags(items=[TAG]),
+        metadata=compute_v1.Metadata(
+            items=[
+                compute_v1.Items(
+                    key="startup-script",
+                    value=STARTUP
+                )
+            ]
+        )
     )
 
     print(f"Creating {name}...")
-
     start = time.time()
 
     instances.insert(
@@ -120,32 +131,9 @@ for name in CLONES:
 
     print(f"{name} created in {elapsed:.2f} seconds.")
 
-    # Add allow-5000 network tag
-    created = instances.get(
-        project=PROJECT,
-        zone=ZONE,
-        instance=name
-    )
-
-    current_tags = created.tags.items or []
-
-    if TAG not in current_tags:
-        tags = compute_v1.Tags(
-            items=list(current_tags) + [TAG],
-            fingerprint=created.tags.fingerprint
-        )
-
-        instances.set_tags(
-            project=PROJECT,
-            zone=ZONE,
-            instance=name,
-            tags_resource=tags
-        ).result()
-
-# Write timing results
+# Write timing results.
 with open("TIMING.md", "w") as file:
     file.write("# VM Clone Timing\n\n")
-
     for name, elapsed in timings:
         file.write(f"- {name}: {elapsed:.2f} seconds\n")
 
