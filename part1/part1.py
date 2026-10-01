@@ -4,7 +4,7 @@ import google.auth
 from google.api_core.exceptions import NotFound
 from google.cloud import compute_v1
 
-ZONE = "us-west1-b"
+ZONE = "us-west1-a"
 NAME = "flask-vm"
 IMAGE_PROJECT = "ubuntu-os-cloud"
 IMAGE_FAMILY = "ubuntu-2204-lts"
@@ -94,7 +94,7 @@ except NotFound:
 
     instance = compute_v1.Instance(
         name=NAME,
-        machine_type=f"zones/{ZONE}/machineTypes/f1-micro",
+        machine_type=f"zones/{ZONE}/machineTypes/e2-medium",
         disks=[disk],
         network_interfaces=[network],
         metadata=compute_v1.Metadata(
